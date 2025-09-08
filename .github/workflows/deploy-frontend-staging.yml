@@ -1,5 +1,4 @@
 name: Deploy Frontend to Cloud Run (staging - IAM gated)
-
 on:
   push:
     branches: [ "develop" ]
@@ -19,7 +18,6 @@ env:
   SERVICE_NAME: lg-frontend
   TESTER_EMAIL: "nils.schuett@gmail.com"
   IMAGE_TAG: staging
-  IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/frontend:${{ env.IMAGE_TAG }}
 
 jobs:
   deploy:
@@ -63,20 +61,26 @@ jobs:
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
+      - name: Compute image reference
+        id: meta
+        shell: bash
+        run: |
+          echo "image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/frontend:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Build image
         working-directory: frontend
         run: |
-          docker build -t "${IMAGE}" .
+          docker build -t "${{ steps.meta.outputs.image }}" .
 
       - name: Push image
         run: |
-          docker push "${IMAGE}"
+          docker push "${{ steps.meta.outputs.image }}"
 
       - name: Deploy to Cloud Run (no public access)
         run: |
           gcloud run deploy "${SERVICE_NAME}" \
             --region "${REGION}" \
-            --image "${IMAGE}" \
+            --image "${{ steps.meta.outputs.image }}" \
             --platform=managed \
             --no-allow-unauthenticated \
             --ingress=all \
@@ -92,7 +96,7 @@ jobs:
       - name: Output service URL
         id: url
         run: |
-          URL="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format='value(status.url)')"
+          URL="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format='value(status.url)')" 
           echo "url=${URL}" >> "$GITHUB_OUTPUT"
           echo "Deployed URL: ${URL}"
 
@@ -104,3 +108,5 @@ jobs:
           echo "Access control:" >> $GITHUB_STEP_SUMMARY
           echo "- Only user '${{ env.TESTER_EMAIL }}' has Cloud Run Invoker permission." >> $GITHUB_STEP_SUMMARY
           echo "- Add more testers by granting roles/run.invoker to their Google emails." >> $GITHUB_STEP_SUMMARY
+          echo "- Add more testers by granting roles/run.invoker to their Google emails." >> $GITHUB_STEP_SUMMARY
+
