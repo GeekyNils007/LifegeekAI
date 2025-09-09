@@ -167,4 +167,6 @@ jobs:
           echo "  Fashion:  ${{ steps.fashion_url.outputs.fashion_url }}"
           echo "  Frontend (service URL): ${{ steps.frontend_url.outputs.frontend_url }}"
           echo "Front door (IAP/LB): https://${DOMAIN}"
+      ci: make Artifact Registry step idempotent
+
           echo "----------------------------------------------------"
