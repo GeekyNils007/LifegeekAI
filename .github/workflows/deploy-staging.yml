@@ -21,7 +21,6 @@ jobs:
   deploy:
     name: Build and Deploy (Staging)
     runs-on: ubuntu-latest
-    if: ${{ github.ref_name == (vars.DEPLOY_BRANCH || 'main') || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,13 +49,27 @@ jobs:
       - name: Ensure Artifact Registry exists (idempotent)
         run: |
           set -euo pipefail
-          if ! gcloud artifacts repositories list --location="${REGION}" --format="value(name)" | grep -q "/${REPO_NAME}$"; then
-            gcloud artifacts repositories create "${REPO_NAME}" \
+          REPO="${REPO_NAME}"
+          REGION="${REGION}"
+
+          # Prefer describe-or-create to avoid grep/list edge cases and treat ALREADY_EXISTS as success.
+          if gcloud artifacts repositories describe "${REPO}" --location="${REGION}" >/dev/null 2>&1; then
+            echo "Artifact Registry ${REPO} already exists in ${REGION}"
+          else
+            echo "Creating Artifact Registry ${REPO} in ${REGION}"
+            gcloud artifacts repositories create "${REPO}" \
               --repository-format=docker \
               --location="${REGION}" \
-              --description="LifeGeek images"
-          else
-            echo "Artifact Registry ${REPO_NAME} already exists in ${REGION}"
+              --description="LifeGeek images" || {
+                status=$?
+                # If creation raced and repo now exists, continue successfully.
+                if gcloud artifacts repositories describe "${REPO}" --location="${REGION}" >/dev/null 2>&1; then
+                  echo "Repo ${REPO} now present after create attempt; continuing."
+                else
+                  echo "Failed to create Artifact Registry repo ${REPO} (exit ${status})"
+                  exit "${status}"
+                fi
+              }
           fi
 
       # ---------- Build images with Cloud Build ----------
@@ -167,6 +180,4 @@ jobs:
           echo "  Fashion:  ${{ steps.fashion_url.outputs.fashion_url }}"
           echo "  Frontend (service URL): ${{ steps.frontend_url.outputs.frontend_url }}"
           echo "Front door (IAP/LB): https://${DOMAIN}"
-      ci: make Artifact Registry step idempotent
-
           echo "----------------------------------------------------"
